@@ -53,7 +53,6 @@ app/
   cookies/page.tsx
   precios/page.tsx                  # Free and Pro plans
   privacy/page.tsx
-  roadmap/page.tsx                  # Public roadmap
   terms/page.tsx
   login/page.tsx
   register/page.tsx
