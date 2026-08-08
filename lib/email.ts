@@ -11,45 +11,11 @@ import { WelcomeEmail } from "@/emails/welcome"
 // Instantiated lazily inside each function so the build doesn't require
 // RESEND_API_KEY at module-load time (Next.js collects route data during build).
 // Must be a verified Resend domain — gmail.com can't be verified, so sending
-// from it returns 403. conexory.com is verified; the team still *receives* at
-// the gmail inbox below.
+// from it returns 403.
 const FROM = "Conexory <no-reply@conexory.com>"
-const TEAM_INBOX = "Conexory@gmail.com"
 
 function resend() {
   return new Resend(process.env.RESEND_API_KEY)
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-}
-
-export async function sendSuggestionNotification(content: string, email?: string | null) {
-  await resend().emails.send({
-    from: FROM,
-    to: TEAM_INBOX,
-    replyTo: email || undefined,
-    subject: "Nueva sugerencia desde el roadmap",
-    html: `
-      <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#000">
-        <h1 style="font-size:22px;font-weight:900;margin-bottom:16px">
-          Nueva sugerencia 💡
-        </h1>
-        <p style="color:#000;font-size:15px;line-height:1.6;white-space:pre-wrap;background:#f3f3f3;border-radius:12px;padding:16px;margin:0 0 16px">${escapeHtml(content)}</p>
-        <p style="color:#5e5e5e;font-size:14px;margin:0">
-          ${email ? `De: <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>` : "Sin email de contacto."}
-        </p>
-        <p style="color:#afafaf;font-size:12px;margin-top:32px">
-          Conexory · Roadmap
-        </p>
-      </div>
-    `,
-  })
 }
 
 export async function sendWelcome(email: string, name: string) {

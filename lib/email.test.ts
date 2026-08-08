@@ -14,7 +14,6 @@ class FakeResend {
 mock.module("resend", () => ({ Resend: FakeResend }))
 
 const {
-  sendSuggestionNotification,
   sendWelcome,
   sendSubscriptionConfirmation,
   sendPaymentFailed,
@@ -104,24 +103,5 @@ describe("sendVerificationEmail", () => {
   test("sends the verification subject with the verify url", async () => {
     await sendVerificationEmail("agent@example.com", "Luis", "https://conexory.com/verify?token=abc")
     expect(lastCall().subject).toBe("Confirma tu correo de Conexory")
-  })
-})
-
-describe("sendSuggestionNotification", () => {
-  test("sends to the team inbox with the contact's email as reply-to", async () => {
-    await sendSuggestionNotification("Deberían agregar dark mode", "user@example.com")
-    const call = lastCall()
-    expect(call.to.toLowerCase()).toBe("conexory@gmail.com")
-    expect(call.replyTo).toBe("user@example.com")
-    expect(call.html).toContain("Deberían agregar dark mode")
-  })
-
-  test("escapes HTML in the suggestion content", async () => {
-    await sendSuggestionNotification('<script>alert("xss")</script>', null)
-    const call = lastCall()
-    expect(call.html).not.toContain("<script>")
-    expect(call.html).toContain("&lt;script&gt;")
-    expect(call.html).toContain("Sin email de contacto.")
-    expect(call.replyTo).toBeUndefined()
   })
 })

@@ -37,7 +37,7 @@ const links = {
   Producto: [
     { label: "Funciones", href: "/#features" },
     { label: "Precios", href: "/precios" },
-    { label: "Roadmap", href: "/roadmap" },
+    { label: "Propiedades", href: "/propiedades" },
     { label: "Blog", href: "/blog" },
   ],
   Legal: [
