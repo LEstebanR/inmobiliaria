@@ -9,6 +9,7 @@ import {
   FLYER_TEMPLATE_IDS,
   FLYER_HIGHLIGHT_MAX_LENGTH,
   HEX_COLOR_REGEX,
+  flyerPhotoLimit,
   type FlyerInfo,
 } from "@/lib/flyer-options"
 
@@ -31,7 +32,7 @@ const QuerySchema = z.object({
           [...FLYER_INFO_IDS])
     ),
   accentColor: z.string().regex(HEX_COLOR_REGEX).optional().catch(undefined),
-  photos: z.string().optional().transform((csv) => csv?.split(",").filter(Boolean).slice(0, 6)),
+  photos: z.string().optional().transform((csv) => csv?.split(",").filter(Boolean)),
 })
 
 export async function GET(
@@ -60,7 +61,7 @@ export async function GET(
     highlight: query.highlight || undefined,
     include,
     accentColor: query.accentColor || property.user.brandColor,
-    photos: query.photos?.filter((url) => property.images.includes(url)),
+    photos: query.photos?.filter((url) => property.images.includes(url)).slice(0, flyerPhotoLimit(query.template)),
   }
 
   // Hash everything that affects the rendered image, not just `options`:

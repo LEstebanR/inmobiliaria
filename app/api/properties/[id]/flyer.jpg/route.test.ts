@@ -139,6 +139,19 @@ describe("GET /api/properties/[id]/flyer.jpg", () => {
     expect(options.photos).toEqual(["https://blob.example.com/two.jpg"])
   })
 
+  test("limits selected photos to the active template capacity", async () => {
+    const images = Array.from({ length: 5 }, (_, i) => `https://blob.example.com/${i + 1}.jpg`)
+    mockPropertyFindUnique.mockImplementation(() => Promise.resolve({ ...baseProperty, images }))
+
+    await GET(makeRequest(`?template=ficha&photos=${images.join(",")}`), ctx("p1"))
+    const [, , options] = mockGenerateFlyerJpeg.mock.calls[0] as unknown as [
+      unknown,
+      unknown,
+      { photos: string[] },
+    ]
+    expect(options.photos).toEqual(images.slice(0, 3))
+  })
+
   test("still returns the image even if caching the blob fails", async () => {
     mockPut.mockImplementation(() => Promise.reject(new Error("blob down")))
     const res = await GET(makeRequest(), ctx("p1"))
