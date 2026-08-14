@@ -41,6 +41,23 @@ export const FLYER_TEMPLATE_DESCRIPTIONS: Record<FlyerTemplate, string> = {
   panorama: "Una portada cinematográfica",
 }
 
+export const FLYER_TEMPLATE_PHOTO_LIMITS: Record<FlyerTemplate, number> = {
+  clasica: 4,
+  ficha: 3,
+  fotos: 4,
+  editorial: 1,
+  poster: 1,
+  split: 2,
+  gallery: 4,
+  minimal: 1,
+  brutalist: 1,
+  panorama: 1,
+}
+
+export function flyerPhotoLimit(template: FlyerTemplate): number {
+  return FLYER_TEMPLATE_PHOTO_LIMITS[template]
+}
+
 export const FLYER_INFO_IDS = ["precio", "caracteristicas", "descripcion", "contacto"] as const
 export type FlyerInfo = (typeof FLYER_INFO_IDS)[number]
 
