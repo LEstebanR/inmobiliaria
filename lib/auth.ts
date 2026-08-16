@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth"
 import { prismaAdapter } from "better-auth/adapters/prisma"
 import { nextCookies } from "better-auth/next-js"
 import { headers } from "next/headers"
+import * as Sentry from "@sentry/nextjs"
 import { prisma } from "@/lib/prisma"
 import { sendResetPasswordEmail, sendVerificationEmail, sendWelcome } from "@/lib/email"
 
@@ -120,7 +121,13 @@ export type User = typeof auth.$Infer.Session.user
 export async function getSession() {
   try {
     return await auth.api.getSession({ headers: await headers() })
-  } catch {
+  } catch (error) {
+    // Degrading to "no session" logs the agent out silently, so keep a trail:
+    // a spike here is people being kicked to /login, not people not logged in.
+    Sentry.captureException(error, {
+      level: "warning",
+      tags: { area: "auth", op: "getSession" },
+    })
     return null
   }
 }
