@@ -89,7 +89,12 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params
   const { c } = await searchParams
-  const property = await getProperty(slug)
+  // A throw here never reaches error.tsx — Next falls back to the not-found
+  // metadata, so a DB blip would title the page "Propiedad no encontrada" and
+  // tell the visitor (and Google) that a live listing is gone. Degrade to the
+  // layout defaults instead and let the page render surface the real failure.
+  const property = await getProperty(slug).catch(() => undefined)
+  if (property === undefined) return {}
   if (!property) return { title: "Propiedad no encontrada" }
 
   const type = TYPE_LABELS[property.type] ?? property.type

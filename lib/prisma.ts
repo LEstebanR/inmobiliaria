@@ -1,4 +1,5 @@
-import { PrismaClient, Prisma } from "@prisma/client"
+import { PrismaClient } from "@prisma/client"
+import { withConnectionRetry } from "@/lib/prisma-retry"
 
 function createPrismaClient() {
   const client = new PrismaClient({
@@ -11,19 +12,7 @@ function createPrismaClient() {
   // a few hundred ms blip.
   return client.$extends({
     query: {
-      $allOperations: async ({ args, query }) => {
-        for (let attempt = 0; ; attempt++) {
-          try {
-            return await query(args)
-          } catch (error) {
-            const isRetryableConnectionError =
-              error instanceof Prisma.PrismaClientInitializationError &&
-              error.errorCode === "P1001"
-            if (!isRetryableConnectionError || attempt >= 2) throw error
-            await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)))
-          }
-        }
-      },
+      $allOperations: ({ args, query }) => withConnectionRetry(() => query(args)),
     },
   })
 }
