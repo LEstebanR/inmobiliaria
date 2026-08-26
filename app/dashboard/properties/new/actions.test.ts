@@ -35,7 +35,13 @@ mock.module("@/lib/prisma", () => ({
 }))
 
 const mockCaptureException = mock(() => {})
-mock.module("@sentry/nextjs", () => ({ captureException: mockCaptureException }))
+// mock.module() replaces "@sentry/nextjs" process-wide, so this stub must
+// carry every Sentry function any other module reaches for — a partial one
+// makes unrelated code throw "is not a function" in the full-suite run.
+mock.module("@sentry/nextjs", () => ({
+  captureException: mockCaptureException,
+  captureMessage: () => undefined,
+}))
 
 const mockSetOnboardingFlag = mock(() => Promise.resolve())
 mock.module("@/lib/onboarding-server", () => ({

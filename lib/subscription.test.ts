@@ -28,11 +28,21 @@ const mockSubscriptionUpsert = mock(
   }
 )
 
+const mockSubscriptionFindUnique = mock((...args: [unknown]) => {
+  void args
+  return Promise.resolve<{ mpPreapprovalId: string | null } | null>(null)
+})
+const mockPaymentEventUpsert = mock((...args: [unknown]) => {
+  void args
+  return Promise.resolve({})
+})
+
 mock.module("@/lib/prisma", () => ({
   prisma: {
     user: { update: mockUserUpdate },
     property: { findMany: mockPropertyFindMany, updateMany: mockPropertyUpdateMany },
-    subscription: { upsert: mockSubscriptionUpsert },
+    subscription: { upsert: mockSubscriptionUpsert, findUnique: mockSubscriptionFindUnique },
+    paymentEvent: { upsert: mockPaymentEventUpsert },
   },
 }))
 
@@ -60,6 +70,11 @@ const mockGetCardToken = mock((...args: [string]) => {
   return Promise.resolve<CardTokenDetails>({ ok: true, cardLastFour: "1234" })
 })
 
+const mockCancelPreapproval = mock((...args: [string]) => {
+  void args
+  return Promise.resolve({ ok: true })
+})
+
 // Spread the real module so unrelated exports (verifyMercadoPagoWebhook,
 // makeExternalReference) stay real for any other test file that imports
 // "@/lib/mercadopago" after this one — mock.module replaces it process-wide.
@@ -68,6 +83,14 @@ mock.module("@/lib/mercadopago", () => ({
   ...realMercadoPago,
   createPreapproval: mockCreatePreapproval,
   getCardToken: mockGetCardToken,
+  cancelPreapproval: mockCancelPreapproval,
+}))
+
+// mock.module() replaces "@sentry/nextjs" process-wide, so this stub must
+// carry every Sentry function any other module reaches for.
+mock.module("@sentry/nextjs", () => ({
+  captureException: () => undefined,
+  captureMessage: () => undefined,
 }))
 
 const { downgradeToFree, startSubscription } = await import("./subscription")
@@ -145,6 +168,53 @@ describe("startSubscription", () => {
 
   test("returns ok on success", async () => {
     const result = await startSubscription(input)
+    expect(result).toEqual({ ok: true })
+  })
+
+  test("cancels the previous preapproval when a user subscribes again", async () => {
+    mockSubscriptionFindUnique.mockImplementationOnce(() =>
+      Promise.resolve({ mpPreapprovalId: "old-preapproval" }),
+    )
+    mockCancelPreapproval.mockClear()
+    mockPaymentEventUpsert.mockClear()
+
+    const result = await startSubscription(input)
+
+    expect(result).toEqual({ ok: true })
+    expect(mockCancelPreapproval).toHaveBeenCalledWith("old-preapproval")
+    expect(mockPaymentEventUpsert.mock.calls[0][0]).toMatchObject({
+      create: { type: "orphan_subscription", status: "cancelled" },
+    })
+  })
+
+  test("does not cancel anything when there is no previous preapproval", async () => {
+    mockSubscriptionFindUnique.mockImplementationOnce(() => Promise.resolve(null))
+    mockCancelPreapproval.mockClear()
+
+    await startSubscription(input)
+
+    expect(mockCancelPreapproval).not.toHaveBeenCalled()
+  })
+
+  test("does not cancel the preapproval Mercado Pago just returned", async () => {
+    mockSubscriptionFindUnique.mockImplementationOnce(() =>
+      Promise.resolve({ mpPreapprovalId: "preapproval-123" }),
+    )
+    mockCancelPreapproval.mockClear()
+
+    await startSubscription(input)
+
+    expect(mockCancelPreapproval).not.toHaveBeenCalled()
+  })
+
+  test("keeps the new subscription even if cancelling the old preapproval fails", async () => {
+    mockSubscriptionFindUnique.mockImplementationOnce(() =>
+      Promise.resolve({ mpPreapprovalId: "old-preapproval" }),
+    )
+    mockCancelPreapproval.mockImplementationOnce(() => Promise.resolve({ ok: false }))
+
+    const result = await startSubscription(input)
+
     expect(result).toEqual({ ok: true })
   })
 

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { FREE_PROPERTY_LIMIT } from "@/lib/plans"
 import { createPreapproval, getCardToken } from "@/lib/mercadopago"
+import { cancelOrphanPreapproval } from "@/lib/orphan-subscriptions"
 
 // Drop a user to Free: clear the premium flag and deactivate properties beyond
 // the Free limit (keeping the most recent ones). Used both when a canceled plan
@@ -56,6 +57,15 @@ export async function startSubscription({
   backUrl: string
   cardTokenId: string
 }): Promise<StartSubscriptionResult> {
+  // Read before creating: the upsert below overwrites mpPreapprovalId, and the
+  // preapproval it replaces keeps charging on Mercado Pago's side unless we
+  // cancel it. Losing the id first would leave that charge running with no
+  // local trace of it.
+  const previous = await prisma.subscription.findUnique({
+    where: { userId },
+    select: { mpPreapprovalId: true },
+  })
+
   const [result, cardToken] = await Promise.all([
     createPreapproval({ userId, email, backUrl, cardTokenId }),
     getCardToken(cardTokenId),
@@ -92,6 +102,20 @@ export async function startSubscription({
     }),
     authorized ? prisma.user.update({ where: { id: userId }, data: { isPremium: true } }) : Promise.resolve(),
   ])
+
+  // Only after the new subscription is safely persisted: if cancelling the old
+  // one fails, the buyer still ends up subscribed and the daily reconciliation
+  // catches the leftover — the reverse order could leave them with neither.
+  if (previous?.mpPreapprovalId && previous.mpPreapprovalId !== result.preapprovalId) {
+    await cancelOrphanPreapproval({
+      preapprovalId: previous.mpPreapprovalId,
+      reason: "superseded_preapproval",
+      userId,
+      payerEmail: email,
+      source: "resubscribe",
+      detail: { replacedBy: result.preapprovalId },
+    })
+  }
 
   return { ok: true }
 }

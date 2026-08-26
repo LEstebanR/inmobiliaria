@@ -13,6 +13,17 @@ export function makeExternalReference(userId: string): string {
   return `pro-${userId}-${Date.now()}`
 }
 
+// Inverse of makeExternalReference: recovers the user a Mercado Pago object
+// belongs to. Cuids can contain dashes, so the id is everything between the
+// "pro-" prefix and the trailing timestamp.
+export function referenceToUserId(reference: string): string | null {
+  const match = reference.match(/^pro-([^-]+(?:-[^-]+)*)-\d+$/)
+  if (!match) return null
+  const parts = reference.split("-")
+  if (parts.length < 3) return null
+  return parts.slice(1, -1).join("-")
+}
+
 export interface CreatePreapprovalResult {
   ok: boolean
   preapprovalId?: string
@@ -111,6 +122,7 @@ export interface PreapprovalDetails {
   status?: string
   externalReference?: string
   payerEmail?: string
+  dateCreated?: Date | null
   error?: string
 }
 
@@ -124,7 +136,12 @@ export async function getPreapproval(preapprovalId: string): Promise<Preapproval
     cache: "no-store",
   })
   const raw = await res.text()
-  const json = parseJson<{ status?: string; external_reference?: string; payer_email?: string }>(raw)
+  const json = parseJson<{
+    status?: string
+    external_reference?: string
+    payer_email?: string
+    date_created?: string
+  }>(raw)
 
   if (!res.ok) {
     console.error("[mercadopago] getPreapproval failed:", res.status, raw.slice(0, 500))
@@ -135,6 +152,7 @@ export async function getPreapproval(preapprovalId: string): Promise<Preapproval
     status: json?.status,
     externalReference: json?.external_reference,
     payerEmail: json?.payer_email,
+    dateCreated: parseDate(json?.date_created),
   }
 }
 
@@ -290,10 +308,98 @@ export function verifyMercadoPagoWebhook({
   }
 }
 
+function parseDate(raw: string | undefined): Date | null {
+  if (!raw) return null
+  const date = new Date(raw)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 function parseJson<T>(raw: string): T | null {
   try {
     return JSON.parse(raw) as T
   } catch {
     return null
   }
+}
+
+export interface PreapprovalSummary {
+  id: string
+  status: string
+  externalReference: string | null
+  payerEmail: string | null
+  dateCreated: Date | null
+}
+
+export interface SearchPreapprovalsResult {
+  ok: boolean
+  results?: PreapprovalSummary[]
+  error?: string
+}
+
+const SEARCH_PAGE_SIZE = 50
+const SEARCH_MAX_PAGES = 20
+
+// Lists the subscriptions Mercado Pago still considers live on our side of the
+// account. Every other call here is driven by something we already hold locally
+// (a preapproval id, a payment id); this one is the opposite direction — it
+// asks Mercado Pago what it is about to charge, so we can spot preapprovals
+// whose local counterpart no longer exists (e.g. a user row deleted straight
+// in the database, which cascades the subscription away and leaves us with no
+// record that the billing is still running).
+export async function searchLivePreapprovals(): Promise<SearchPreapprovalsResult> {
+  if (!MERCADOPAGO_ACCESS_TOKEN) return { ok: false, error: "missing_access_token" }
+
+  const results: PreapprovalSummary[] = []
+
+  // "pending" is included on purpose: an unconfirmed preapproval can still turn
+  // authorized later and start charging, so an orphaned one must be cancelled
+  // too, not just the already-authorized ones.
+  for (const status of ["authorized", "pending"]) {
+    for (let page = 0; page < SEARCH_MAX_PAGES; page++) {
+      const offset = page * SEARCH_PAGE_SIZE
+      const res = await fetch(
+        `${API_BASE}/preapproval/search?status=${status}&limit=${SEARCH_PAGE_SIZE}&offset=${offset}`,
+        {
+          headers: { Authorization: `Bearer ${MERCADOPAGO_ACCESS_TOKEN}` },
+          cache: "no-store",
+        },
+      )
+      const raw = await res.text()
+
+      if (!res.ok) {
+        console.error("[mercadopago] searchLivePreapprovals failed:", res.status, raw.slice(0, 500))
+        return { ok: false, error: `http_${res.status}` }
+      }
+
+      const json = parseJson<{
+        results?: {
+          id?: string
+          status?: string
+          external_reference?: string
+          payer_email?: string
+          date_created?: string
+        }[]
+      }>(raw)
+      const pageResults = json?.results
+      if (!Array.isArray(pageResults)) {
+        console.error("[mercadopago] searchLivePreapprovals: unexpected body", raw.slice(0, 500))
+        return { ok: false, error: "unexpected_body" }
+      }
+
+      for (const item of pageResults) {
+        if (!item?.id) continue
+        results.push({
+          id: item.id,
+          status: item.status ?? "unknown",
+          externalReference: item.external_reference ?? null,
+          payerEmail: item.payer_email ?? null,
+          dateCreated: parseDate(item.date_created),
+        })
+      }
+
+      if (pageResults.length < SEARCH_PAGE_SIZE) break
+    }
+  }
+
+  return { ok: true, results }
 }

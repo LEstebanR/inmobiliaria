@@ -1,5 +1,11 @@
 import { prisma } from "@/lib/prisma"
-import { verifyMercadoPagoWebhook, getPayment, getPreapproval } from "@/lib/mercadopago"
+import {
+  verifyMercadoPagoWebhook,
+  getPayment,
+  getPreapproval,
+  referenceToUserId,
+} from "@/lib/mercadopago"
+import { classifyPreapproval, cancelOrphanPreapproval } from "@/lib/orphan-subscriptions"
 import { sendPaymentFailed, sendSubscriptionConfirmation } from "@/lib/email"
 
 export async function POST(req: Request) {
@@ -57,6 +63,20 @@ async function handlePaymentNotification(paymentId: string, type: string, body: 
   await linkEvent(externalId, userId)
 
   if (payment.status === "approved") {
+    // A charge that landed on someone who no longer has an account or a plan
+    // must not just be ignored: Mercado Pago would keep charging it every
+    // month. Cut the preapproval before anything else.
+    if (
+      payment.preapprovalId &&
+      (await stopOrphanCharge({
+        preapprovalId: payment.preapprovalId,
+        externalReference: payment.externalReference ?? null,
+        detail: { paymentId, amountCents: payment.amountCents },
+      }))
+    ) {
+      return
+    }
+
     await handleApproved(userId, {
       preapprovalId: payment.preapprovalId,
       cardBrand: payment.cardBrand,
@@ -65,6 +85,32 @@ async function handlePaymentNotification(paymentId: string, type: string, body: 
   } else if (payment.status === "rejected" || payment.status === "cancelled") {
     await handleDeclined(userId)
   }
+}
+
+// Returns true when the preapproval had no valid local owner and was cancelled,
+// meaning the caller should stop processing this notification.
+async function stopOrphanCharge({
+  preapprovalId,
+  externalReference,
+  dateCreated,
+  detail,
+}: {
+  preapprovalId: string
+  externalReference: string | null
+  dateCreated?: Date | null
+  detail?: Record<string, unknown>
+}): Promise<boolean> {
+  const verdict = await classifyPreapproval({ id: preapprovalId, externalReference, dateCreated })
+  if (!verdict.orphaned) return false
+
+  await cancelOrphanPreapproval({
+    preapprovalId,
+    reason: verdict.reason,
+    userId: verdict.userId,
+    source: "webhook",
+    detail,
+  })
+  return true
 }
 
 async function handlePreapprovalNotification(preapprovalId: string, type: string, body: object) {
@@ -85,6 +131,15 @@ async function handlePreapprovalNotification(preapprovalId: string, type: string
     await handleCancelled(userId)
   } else if (preapproval.status === "paused") {
     await handleDeclined(userId)
+  } else if (preapproval.status === "authorized" || preapproval.status === "pending") {
+    // Still live on Mercado Pago's side — the last chance to catch one whose
+    // owner is gone before it produces another charge.
+    await stopOrphanCharge({
+      preapprovalId,
+      externalReference: preapproval.externalReference ?? null,
+      dateCreated: preapproval.dateCreated,
+      detail: { preapprovalStatus: preapproval.status, payerEmail: preapproval.payerEmail },
+    })
   }
 }
 
@@ -232,15 +287,6 @@ async function handleCancelled(userId: string | null) {
     where: { userId, status: { in: ["active", "past_due", "incomplete"] } },
     data: { status: "canceling" },
   })
-}
-
-function referenceToUserId(reference: string): string | null {
-  // reference format: "pro-{userId}-{timestamp}"
-  const match = reference.match(/^pro-([^-]+(?:-[^-]+)*)-\d+$/)
-  if (!match) return null
-  const parts = reference.split("-")
-  if (parts.length < 3) return null
-  return parts.slice(1, -1).join("-")
 }
 
 function isUniqueConstraintError(e: unknown): boolean {
