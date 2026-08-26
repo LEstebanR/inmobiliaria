@@ -20,12 +20,59 @@ const mockUserUpdate = mock((...args: [unknown]) => {
   void args
   return Promise.resolve({})
 })
+type UserRow = {
+  id: string
+  subscription: { status: string; mpPreapprovalId: string | null } | null
+}
+const mockUserFindUnique = mock((...args: [unknown]) => {
+  void args
+  return Promise.resolve<UserRow | null>(null)
+})
+const mockPaymentEventUpsert = mock((...args: [unknown]) => {
+  void args
+  return Promise.resolve({})
+})
 
 mock.module("@/lib/prisma", () => ({
   prisma: {
     subscription: { findMany: mockSubFindMany, update: mockSubUpdate },
-    user: { findMany: mockUserFindMany, update: mockUserUpdate },
+    user: { findMany: mockUserFindMany, update: mockUserUpdate, findUnique: mockUserFindUnique },
+    paymentEvent: { upsert: mockPaymentEventUpsert },
   },
+}))
+
+type LivePreapproval = {
+  id: string
+  status: string
+  externalReference: string | null
+  payerEmail: string | null
+  dateCreated: Date | null
+}
+const mockSearchLivePreapprovals = mock(() =>
+  Promise.resolve<{ ok: boolean; results?: LivePreapproval[]; error?: string }>({ ok: true, results: [] }),
+)
+const mockCancelPreapproval = mock((...args: [string]) => {
+  void args
+  return Promise.resolve({ ok: true })
+})
+// Spread the real module so unrelated exports stay real — mock.module()
+// replaces "@/lib/mercadopago" process-wide, not just for this file.
+const realMercadoPago = await import("@/lib/mercadopago")
+mock.module("@/lib/mercadopago", () => ({
+  ...realMercadoPago,
+  searchLivePreapprovals: mockSearchLivePreapprovals,
+  cancelPreapproval: mockCancelPreapproval,
+}))
+
+const mockCaptureMessage = mock((...args: [unknown, unknown]) => {
+  void args
+})
+const mockCaptureException = mock((...args: [unknown, unknown]) => {
+  void args
+})
+mock.module("@sentry/nextjs", () => ({
+  captureMessage: mockCaptureMessage,
+  captureException: mockCaptureException,
 }))
 
 const mockDowngradeToFree = mock((...args: [string]) => {
@@ -72,6 +119,15 @@ beforeEach(() => {
   mockSendRenewalReminder.mockClear()
   mockSendSubscriptionCancelled.mockImplementation(() => Promise.resolve())
   mockSendSubscriptionCancelled.mockClear()
+  mockSearchLivePreapprovals.mockImplementation(() => Promise.resolve({ ok: true, results: [] }))
+  mockSearchLivePreapprovals.mockClear()
+  mockCancelPreapproval.mockImplementation(() => Promise.resolve({ ok: true }))
+  mockCancelPreapproval.mockClear()
+  mockUserFindUnique.mockImplementation(() => Promise.resolve(null))
+  mockUserFindUnique.mockClear()
+  mockPaymentEventUpsert.mockClear()
+  mockCaptureMessage.mockClear()
+  mockCaptureException.mockClear()
 })
 
 describe("GET /api/cron/billing — auth", () => {
@@ -242,5 +298,124 @@ describe("expireManualPro", () => {
     expect(body.manualExpired).toBe(1)
     expect(mockDowngradeToFree).toHaveBeenCalledWith("u1")
     expect(mockUserUpdate).toHaveBeenCalledWith({ where: { id: "u1" }, data: { premiumUntil: null } })
+  })
+})
+
+describe("cancelOrphanSubscriptions", () => {
+  const orphanRef = "pro-ghost-user-1700000000"
+
+  function livePreapproval(overrides: Partial<LivePreapproval> = {}): LivePreapproval {
+    return {
+      id: "pa-orphan",
+      status: "authorized",
+      externalReference: orphanRef,
+      payerEmail: "lucho@example.com",
+      dateCreated: new Date(Date.now() - 40 * 86_400_000),
+      ...overrides,
+    }
+  }
+
+  test("cancels a preapproval whose user was deleted from the database", async () => {
+    mockSearchLivePreapprovals.mockImplementation(() =>
+      Promise.resolve({ ok: true, results: [livePreapproval()] }),
+    )
+    mockUserFindUnique.mockImplementation(() => Promise.resolve(null))
+
+    const res = await GET(authedRequest())
+    const body = await res.json()
+
+    expect(mockCancelPreapproval).toHaveBeenCalledWith("pa-orphan")
+    expect(body.orphansCanceled).toBe(1)
+    expect(mockPaymentEventUpsert).toHaveBeenCalledTimes(1)
+  })
+
+  test("cancels a preapproval whose local subscription is already cancelled", async () => {
+    mockSearchLivePreapprovals.mockImplementation(() =>
+      Promise.resolve({ ok: true, results: [livePreapproval()] }),
+    )
+    mockUserFindUnique.mockImplementation(() =>
+      Promise.resolve({ id: "ghost-user", subscription: { status: "cancelled", mpPreapprovalId: "pa-orphan" } }),
+    )
+
+    await GET(authedRequest())
+    expect(mockCancelPreapproval).toHaveBeenCalledWith("pa-orphan")
+  })
+
+  test("leaves an active subscriber's own preapproval alone", async () => {
+    mockSearchLivePreapprovals.mockImplementation(() =>
+      Promise.resolve({ ok: true, results: [livePreapproval()] }),
+    )
+    mockUserFindUnique.mockImplementation(() =>
+      Promise.resolve({ id: "ghost-user", subscription: { status: "active", mpPreapprovalId: "pa-orphan" } }),
+    )
+
+    await GET(authedRequest())
+    expect(mockCancelPreapproval).not.toHaveBeenCalled()
+  })
+
+  test("leaves a preapproval whose reference we did not mint alone", async () => {
+    mockSearchLivePreapprovals.mockImplementation(() =>
+      Promise.resolve({ ok: true, results: [livePreapproval({ externalReference: "someone-elses-ref" })] }),
+    )
+
+    await GET(authedRequest())
+    expect(mockCancelPreapproval).not.toHaveBeenCalled()
+    expect(mockUserFindUnique).not.toHaveBeenCalled()
+  })
+
+  test("does not cancel anything when the Mercado Pago search fails", async () => {
+    mockSearchLivePreapprovals.mockImplementation(() =>
+      Promise.resolve({ ok: false, error: "http_500" }),
+    )
+
+    await GET(authedRequest())
+    expect(mockCancelPreapproval).not.toHaveBeenCalled()
+    expect(mockCaptureMessage).toHaveBeenCalled()
+  })
+
+  test("aborts the sweep instead of cancelling when the database errors out", async () => {
+    mockSearchLivePreapprovals.mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        results: [livePreapproval(), livePreapproval({ id: "pa-orphan-2" })],
+      }),
+    )
+    mockUserFindUnique.mockImplementation(() => Promise.reject(new Error("db down")))
+
+    const res = await GET(authedRequest())
+    const body = await res.json()
+
+    expect(mockCancelPreapproval).not.toHaveBeenCalled()
+    expect(body.orphansCanceled).toBe(0)
+    expect(mockCaptureException).toHaveBeenCalled()
+  })
+
+  test("aborts instead of mass-cancelling when too many candidates show up at once", async () => {
+    const many = Array.from({ length: 11 }, (_, i) => livePreapproval({ id: `pa-${i}` }))
+    mockSearchLivePreapprovals.mockImplementation(() => Promise.resolve({ ok: true, results: many }))
+    mockUserFindUnique.mockImplementation(() => Promise.resolve(null))
+
+    const res = await GET(authedRequest())
+    const body = await res.json()
+
+    expect(mockCancelPreapproval).not.toHaveBeenCalled()
+    expect(body.orphansCanceled).toBe(0)
+    expect(mockCaptureMessage).toHaveBeenCalled()
+  })
+
+  test("does not count a cancellation Mercado Pago refused", async () => {
+    mockSearchLivePreapprovals.mockImplementation(() =>
+      Promise.resolve({ ok: true, results: [livePreapproval()] }),
+    )
+    mockUserFindUnique.mockImplementation(() => Promise.resolve(null))
+    mockCancelPreapproval.mockImplementation(() => Promise.resolve({ ok: false, error: "http_500" }))
+
+    const res = await GET(authedRequest())
+    const body = await res.json()
+
+    expect(body.orphansCanceled).toBe(0)
+    expect(mockPaymentEventUpsert.mock.calls[0][0]).toMatchObject({
+      create: { status: "cancel_failed" },
+    })
   })
 })

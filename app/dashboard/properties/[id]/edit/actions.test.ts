@@ -26,7 +26,13 @@ mock.module("@/lib/prisma", () => ({
 const mockCaptureException = mock((...args: [unknown, unknown]) => {
   void args
 })
-mock.module("@sentry/nextjs", () => ({ captureException: mockCaptureException }))
+// mock.module() replaces "@sentry/nextjs" process-wide, so this stub must
+// carry every Sentry function any other module reaches for — a partial one
+// makes unrelated code throw "is not a function" in the full-suite run.
+mock.module("@sentry/nextjs", () => ({
+  captureException: mockCaptureException,
+  captureMessage: () => undefined,
+}))
 
 // next/headers is mocked globally in test-setup.ts.
 

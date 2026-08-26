@@ -1,5 +1,12 @@
+import * as Sentry from "@sentry/nextjs"
 import { prisma } from "@/lib/prisma"
 import { downgradeToFree } from "@/lib/subscription"
+import { searchLivePreapprovals } from "@/lib/mercadopago"
+import {
+  classifyPreapproval,
+  cancelOrphanPreapproval,
+  type OrphanReason,
+} from "@/lib/orphan-subscriptions"
 import { sendRenewalReminder, sendSubscriptionCancelled } from "@/lib/email"
 
 // Daily billing job (scheduled in vercel.json). Mercado Pago drives the
@@ -11,6 +18,12 @@ import { sendRenewalReminder, sendSubscriptionCancelled } from "@/lib/email"
 export const dynamic = "force-dynamic"
 
 const REMINDER_DAYS = 3
+
+// Ceiling on how many subscriptions one run may cancel at Mercado Pago. A bug
+// in the classification, or a database that answers but with the wrong data,
+// would otherwise be able to cancel the whole customer base in a single pass.
+// Anything above this is reported instead of acted on.
+const MAX_ORPHAN_CANCELS_PER_RUN = 10
 
 function isAuthorized(req: Request): boolean {
   const secret = process.env.CRON_SECRET ?? ""
@@ -30,12 +43,13 @@ export async function GET(req: Request) {
   }
 
   const now = new Date()
-  const summary = { reminded: 0, downgraded: 0, canceled: 0, manualExpired: 0 }
+  const summary = { reminded: 0, downgraded: 0, canceled: 0, manualExpired: 0, orphansCanceled: 0 }
 
   await sendReminders(now, summary)
   await expireCanceled(now, summary)
   await downgradeExpired(now, summary)
   await expireManualPro(now, summary)
+  await cancelOrphanSubscriptions(summary)
 
   return Response.json({ ok: true, ...summary })
 }
@@ -154,5 +168,76 @@ async function expireManualPro(
       })
     }
     summary.manualExpired++
+  }
+}
+
+// Reconciles what Mercado Pago is still about to charge against who is actually
+// entitled to be charged. This is the only safety net for a subscription whose
+// local trace is gone entirely — deleting a user row cascades its subscription
+// away, taking mpPreapprovalId with it, while Mercado Pago happily keeps
+// billing the card every month. Running daily means an orphan is caught well
+// before its next monthly charge.
+async function cancelOrphanSubscriptions(summary: { orphansCanceled: number }) {
+  const live = await searchLivePreapprovals()
+  if (!live.ok || !live.results) {
+    // Never infer "no live subscriptions" from a failed lookup.
+    Sentry.captureMessage("Orphan reconciliation skipped: preapproval search failed", {
+      level: "error",
+      tags: { area: "billing" },
+      extra: { error: live.error },
+    })
+    return
+  }
+
+  type Orphan = {
+    preapproval: (typeof live.results)[number]
+    reason: OrphanReason
+    userId: string | null
+  }
+  const orphans: Orphan[] = []
+
+  for (const preapproval of live.results) {
+    // A database error here must abort the sweep, not be read as "this user
+    // does not exist" — that mistake cancels paying customers.
+    const verdict = await classifyPreapproval({
+      id: preapproval.id,
+      externalReference: preapproval.externalReference,
+      dateCreated: preapproval.dateCreated,
+    }).catch((err) => {
+      Sentry.captureException(err, {
+        tags: { area: "billing", job: "orphan-reconciliation" },
+        extra: { preapprovalId: preapproval.id },
+      })
+      return null
+    })
+    if (!verdict) return
+    if (verdict.orphaned) {
+      orphans.push({ preapproval, reason: verdict.reason, userId: verdict.userId })
+    }
+  }
+
+  if (orphans.length > MAX_ORPHAN_CANCELS_PER_RUN) {
+    Sentry.captureMessage("Orphan reconciliation aborted: too many candidates", {
+      level: "error",
+      tags: { area: "billing" },
+      extra: {
+        candidates: orphans.length,
+        limit: MAX_ORPHAN_CANCELS_PER_RUN,
+        preapprovalIds: orphans.map((o) => o.preapproval.id),
+      },
+    })
+    return
+  }
+
+  for (const { preapproval, reason, userId } of orphans) {
+    const { cancelled } = await cancelOrphanPreapproval({
+      preapprovalId: preapproval.id,
+      reason,
+      userId,
+      payerEmail: preapproval.payerEmail,
+      source: "cron",
+      detail: { preapprovalStatus: preapproval.status },
+    })
+    if (cancelled) summary.orphansCanceled++
   }
 }
