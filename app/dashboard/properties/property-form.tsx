@@ -12,6 +12,7 @@ const FIELD_SECTION: Record<string, string> = {
   images: "tour-photos",
   videoUrl: "tour-photos",
   title: "tour-basic",
+  titleEn: "tour-language",
   price: "tour-basic",
   city: "tour-basic",
   state: "tour-basic",
@@ -22,6 +23,7 @@ const FIELD_SECTION: Record<string, string> = {
   bathrooms: "tour-details",
   parking: "tour-details",
   description: "tour-description",
+  descriptionEn: "tour-language",
 }
 
 // Visual top-to-bottom order of the sections, to scroll to the first invalid
@@ -33,6 +35,7 @@ const SECTION_ORDER = [
   "tour-basic",
   "tour-details",
   "tour-description",
+  "tour-language",
 ]
 
 export type PropertyValidation =

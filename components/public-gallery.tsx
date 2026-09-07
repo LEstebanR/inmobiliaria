@@ -9,10 +9,12 @@ import { cn } from "@/lib/utils"
 export default function PublicGallery({
   images,
   title,
+  english = false,
   className,
 }: {
   images: string[]
   title: string
+  english?: boolean
   className?: string
 }) {
   const [index, setIndex] = useState(0)
@@ -103,7 +105,7 @@ export default function PublicGallery({
         {/* Expand hint */}
         <div className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-1.5 bg-black/55 backdrop-blur-sm text-white text-xs font-bold px-3 py-1.5 rounded-full">
           <Expand className="w-3.5 h-3.5" strokeWidth={2.5} />
-          Ver fotos
+          {english ? "View photos" : "Ver fotos"}
         </div>
 
         {/* Counter */}
@@ -119,7 +121,7 @@ export default function PublicGallery({
             <button
               type="button"
               onClick={() => go(-1)}
-              aria-label="Anterior"
+              aria-label={english ? "Previous" : "Anterior"}
               className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/45 hover:bg-black/70 backdrop-blur-sm flex items-center justify-center transition-colors"
             >
               <ChevronLeft className="w-5 h-5 text-white" strokeWidth={2.5} />
@@ -127,7 +129,7 @@ export default function PublicGallery({
             <button
               type="button"
               onClick={() => go(1)}
-              aria-label="Siguiente"
+              aria-label={english ? "Next" : "Siguiente"}
               className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/45 hover:bg-black/70 backdrop-blur-sm flex items-center justify-center transition-colors"
             >
               <ChevronRight className="w-5 h-5 text-white" strokeWidth={2.5} />
@@ -144,7 +146,7 @@ export default function PublicGallery({
               key={i}
               type="button"
               onClick={() => setIndex(i)}
-              aria-label={`Ir a imagen ${i + 1}`}
+              aria-label={english ? `Go to image ${i + 1}` : `Ir a imagen ${i + 1}`}
               className={cn(
                 "rounded-full transition-all duration-200",
                 i === index
@@ -187,7 +189,7 @@ export default function PublicGallery({
           <button
             type="button"
             onClick={() => setLightbox(false)}
-            aria-label="Cerrar"
+            aria-label={english ? "Close" : "Cerrar"}
             className="absolute top-3 right-3 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-sm flex items-center justify-center transition-colors"
           >
             <X className="w-6 h-6 text-white" strokeWidth={2} />
@@ -198,7 +200,7 @@ export default function PublicGallery({
               <button
                 type="button"
                 onClick={() => go(-1)}
-                aria-label="Anterior"
+                aria-label={english ? "Previous" : "Anterior"}
                 className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-sm flex items-center justify-center transition-colors"
               >
                 <ChevronLeft className="w-6 h-6 text-white" strokeWidth={2.5} />
@@ -206,7 +208,7 @@ export default function PublicGallery({
               <button
                 type="button"
                 onClick={() => go(1)}
-                aria-label="Siguiente"
+                aria-label={english ? "Next" : "Siguiente"}
                 className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-sm flex items-center justify-center transition-colors"
               >
                 <ChevronRight className="w-6 h-6 text-white" strokeWidth={2.5} />

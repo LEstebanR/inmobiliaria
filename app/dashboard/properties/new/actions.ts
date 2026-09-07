@@ -36,6 +36,16 @@ export async function completePropertyTour(): Promise<void> {
   await setOnboardingFlag(session.user.id, "propertyTourCompleted")
 }
 
+export async function getEnglishProfileStatus(): Promise<boolean> {
+  const session = await getSession()
+  if (!session) return false
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { bioEn: true },
+  })
+  return !!user?.bioEn
+}
+
 type CreateResult = { success: true; id: string } | { success: false; error: string }
 
 export async function createProperty(data: PropertyInput): Promise<CreateResult> {
@@ -71,6 +81,7 @@ export async function createProperty(data: PropertyInput): Promise<CreateResult>
         slug,
         userId: session.user.id,
         title: parsed.data.title,
+        titleEn: parsed.data.titleEn,
         type: parsed.data.type,
         transactionType: parsed.data.transactionType,
         price: parsed.data.price,
@@ -84,6 +95,8 @@ export async function createProperty(data: PropertyInput): Promise<CreateResult>
         bathrooms: parsed.data.bathrooms,
         parking: parsed.data.parking,
         description: parsed.data.description,
+        descriptionEn: parsed.data.descriptionEn,
+        englishAvailable: parsed.data.englishAvailable,
         images: parsed.data.images,
         videoUrl: parsed.data.videoUrl,
         latitude: parsed.data.latitude ?? null,

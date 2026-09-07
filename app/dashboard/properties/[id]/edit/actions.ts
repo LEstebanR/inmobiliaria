@@ -39,6 +39,7 @@ export async function updateProperty(
       where: { id: propertyId, userId: session.user.id },
       data: {
         title: parsed.data.title,
+        titleEn: parsed.data.titleEn,
         type: parsed.data.type,
         transactionType: parsed.data.transactionType,
         price: newPrice,
@@ -53,6 +54,8 @@ export async function updateProperty(
         bathrooms: parsed.data.bathrooms,
         parking: parsed.data.parking,
         description: parsed.data.description,
+        descriptionEn: parsed.data.descriptionEn,
+        englishAvailable: parsed.data.englishAvailable,
         images: parsed.data.images,
         videoUrl: parsed.data.videoUrl,
         latitude: parsed.data.latitude ?? null,

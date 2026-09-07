@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useState, useTransition } from "react"
+import { Suspense, useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import dynamic from "next/dynamic"
-import { createProperty } from "./actions"
+import { createProperty, getEnglishProfileStatus } from "./actions"
 import { FieldError, validatePropertyInput } from "../property-form"
 import ImageUpload from "@/components/image-upload"
 import LocationSelect from "@/components/location-select"
@@ -78,6 +78,7 @@ export default function NewPropertyPage() {
   const [type, setType] = useState("")
   const [transactionType, setTransactionType] = useState(DEFAULT_TRANSACTION_TYPE)
   const [title, setTitle] = useState("")
+  const [titleEn, setTitleEn] = useState("")
   const [price, setPrice] = useState("") // plain digits, no thousand separators
   const [state, setState] = useState("")
   const [city, setCity] = useState("")
@@ -89,6 +90,9 @@ export default function NewPropertyPage() {
   const [bathrooms, setBathrooms] = useState("")
   const [parking, setParking] = useState("")
   const [description, setDescription] = useState("")
+  const [descriptionEn, setDescriptionEn] = useState("")
+  const [englishAvailable, setEnglishAvailable] = useState(false)
+  const [englishProfileComplete, setEnglishProfileComplete] = useState(true)
   const [videoUrl, setVideoUrl] = useState("")
   const [latitude, setLatitude] = useState<number | null>(null)
   const [longitude, setLongitude] = useState<number | null>(null)
@@ -103,6 +107,10 @@ export default function NewPropertyPage() {
   const maxImages = photoLimit(
     session ? hasProAccess(session.user) : false
   )
+
+  useEffect(() => {
+    getEnglishProfileStatus().then(setEnglishProfileComplete).catch(() => setEnglishProfileComplete(false))
+  }, [])
 
   function clearError(field: string) {
     setFieldErrors((prev) => {
@@ -119,6 +127,8 @@ export default function NewPropertyPage() {
 
     const data = {
       title,
+      titleEn,
+      englishAvailable,
       type,
       transactionType,
       price,
@@ -132,6 +142,7 @@ export default function NewPropertyPage() {
       parking,
       gatedCommunity,
       description,
+      descriptionEn,
       images: imageUrls,
       videoUrl,
       latitude,
@@ -429,6 +440,66 @@ export default function NewPropertyPage() {
             <p className="text-xs text-mute text-right">{description.length}/1000</p>
             <FieldError message={fieldErrors.description} />
           </div>
+        </SectionCard>
+
+        <SectionCard id="tour-language" title="Disponibilidad en inglés">
+          <label className="flex items-start gap-3 cursor-pointer group select-none">
+            <div className="relative flex-shrink-0 mt-0.5">
+              <input
+                type="checkbox"
+                className="sr-only"
+                checked={englishAvailable}
+                onChange={(e) => setEnglishAvailable(e.target.checked)}
+              />
+              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${englishAvailable ? "bg-ink border-ink" : "bg-white border-hairline-strong group-hover:border-ink"}`}>
+                {englishAvailable && <span className="text-white text-xs font-black">✓</span>}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-ink">También disponible en inglés</p>
+              <p className="text-xs text-mute leading-relaxed mt-0.5">
+                Crearemos un segundo link con toda la ficha traducida. Necesitas ingresar título y descripción en ambos idiomas.
+              </p>
+            </div>
+          </label>
+
+          {englishAvailable && (
+            <div className="space-y-4 pt-4 border-t border-hairline">
+              {!englishProfileComplete && (
+                <div className="bg-warning-50 border border-warning-200 rounded-xl px-3 py-2.5">
+                  <p className="text-xs font-bold text-warning-900">Completa tu perfil en inglés</p>
+                  <p className="text-xs text-warning-700 mt-0.5">
+                    Agrega tu descripción breve en inglés en <Link href="/dashboard/settings" className="font-bold underline">Configuración</Link> para que la card del asesor aparezca traducida.
+                  </p>
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <FieldLabel>Título en inglés</FieldLabel>
+                <Input
+                  placeholder="E.g. Modern apartment with park view"
+                  value={titleEn}
+                  onChange={(e) => { setTitleEn(e.target.value); clearError("titleEn") }}
+                  className="h-11"
+                  maxLength={120}
+                />
+                <p className="text-xs text-mute text-right">{titleEn.length}/120</p>
+                <FieldError message={fieldErrors.titleEn} />
+              </div>
+              <div className="space-y-1.5">
+                <FieldLabel>Descripción en inglés</FieldLabel>
+                <textarea
+                  placeholder="Describe the property, finishes, location and nearby points of interest..."
+                  value={descriptionEn}
+                  onChange={(e) => { setDescriptionEn(e.target.value); clearError("descriptionEn") }}
+                  rows={5}
+                  maxLength={1000}
+                  className="w-full rounded-xl border border-hairline-strong px-4 py-3 text-sm text-ink placeholder:text-mute resize-none focus:outline-none focus:ring-2 focus:ring-ink/30 focus:border-ink transition-colors"
+                />
+                <p className="text-xs text-mute text-right">{descriptionEn.length}/1000</p>
+                <FieldError message={fieldErrors.descriptionEn} />
+              </div>
+            </div>
+          )}
         </SectionCard>
 
         {/* Location on map */}

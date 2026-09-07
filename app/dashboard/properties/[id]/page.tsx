@@ -67,6 +67,8 @@ export default async function PropertyDetailPage({
 
   const publicUrl = `${getAppUrl()}/p/${property.slug}`
   const publicUrlNoContact = `${getAppUrl()}/p/${property.slug}?c=0`
+  const englishUrl = property.englishAvailable ? `${getAppUrl()}/p/${property.slug}?lang=en` : undefined
+  const englishUrlNoContact = property.englishAvailable ? `${getAppUrl()}/p/${property.slug}?lang=en&c=0` : undefined
   const typeLabel = PROPERTY_TYPE_LABELS[property.type] ?? property.type
   const transactionLabel = property.transactionType
     ? TRANSACTION_TYPE_LABELS[property.transactionType] ?? null
@@ -208,6 +210,8 @@ export default async function PropertyDetailPage({
         <SharePanel
           url={publicUrl}
           urlNoContact={publicUrlNoContact}
+          englishUrl={englishUrl}
+          englishUrlNoContact={englishUrlNoContact}
           propertyId={property.id}
           slug={property.slug}
           published={property.published}

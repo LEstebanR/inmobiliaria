@@ -16,6 +16,7 @@ interface Props {
   image: string | null
   location: string
   bio: string
+  bioEn: string
   phone: string
   phoneIsWhatsapp: boolean
   instagram: string
@@ -24,9 +25,11 @@ interface Props {
   linkedin: string
   youtube: string
   brandColor: string
+  showEnglishProfile: boolean
+  englishProfileComplete: boolean
 }
 
-export default function SettingsForm({ name, email, image, location, bio, phone, phoneIsWhatsapp, instagram, facebook, tiktok, linkedin, youtube, brandColor }: Props) {
+export default function SettingsForm({ name, email, image, location, bio, bioEn, phone, phoneIsWhatsapp, instagram, facebook, tiktok, linkedin, youtube, brandColor, showEnglishProfile, englishProfileComplete }: Props) {
   const [state, formAction, isPending] = useActionState<ProfileState, FormData>(updateProfile, {})
   const [avatarUrl, setAvatarUrl] = useState(image ?? "")
   const [uploading, setUploading] = useState(false)
@@ -128,6 +131,17 @@ export default function SettingsForm({ name, email, image, location, bio, phone,
         <Input id="name" name="name" defaultValue={name} required maxLength={80} className="h-11" />
       </div>
 
+      {showEnglishProfile && (
+        <div className="space-y-4 pt-5 border-t border-hairline">
+          {!englishProfileComplete && (
+            <div className="bg-warning-50 border border-warning-200 rounded-xl px-3 py-2.5">
+              <p className="text-xs font-bold text-warning-900">Perfil en inglés incompleto</p>
+              <p className="text-xs text-warning-700 mt-0.5">Tienes propiedades disponibles en inglés. Completa estos campos para que la card del asesor también se muestre en inglés.</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Location */}
       <div className="space-y-1.5">
         <label htmlFor="location" className="block text-sm font-semibold text-ink">
@@ -159,6 +173,12 @@ export default function SettingsForm({ name, email, image, location, bio, phone,
           rows={3}
           className="w-full rounded-xl border border-hairline bg-white px-3 py-2.5 text-sm text-ink placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-ink/20 focus:border-ink resize-none"
         />
+        {showEnglishProfile && (
+          <div className="pt-3 mt-3 border-t border-hairline">
+            <label htmlFor="bioEn" className="block text-sm font-semibold text-ink">Descripción breve en inglés <span className="ml-1.5 text-xs font-normal text-mute">Opcional</span></label>
+            <textarea id="bioEn" name="bioEn" defaultValue={bioEn} placeholder="Tell your clients about yourself and your experience…" maxLength={300} rows={3} className="w-full mt-1.5 rounded-xl border border-hairline bg-white px-3 py-2.5 text-sm text-ink placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-ink/20 focus:border-ink resize-none" />
+          </div>
+        )}
       </div>
 
       {/* Phone */}

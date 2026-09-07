@@ -136,6 +136,8 @@ function buildBody(templateId: ShareMessageKind, ctx: TemplateCtx): string {
 export default function SharePanel({
   url,
   urlNoContact,
+  englishUrl,
+  englishUrlNoContact,
   propertyId,
   slug,
   published,
@@ -157,6 +159,8 @@ export default function SharePanel({
 }: {
   url: string
   urlNoContact: string
+  englishUrl?: string
+  englishUrlNoContact?: string
   propertyId: string
   slug: string
   published: boolean
@@ -177,7 +181,8 @@ export default function SharePanel({
   images: string[]
 }) {
   const [copied, setCopied] = useState(false)
-  const [copiedNoContact, setCopiedNoContact] = useState(false)
+  const [language, setLanguage] = useState<"es" | "en">("es")
+  const [includeContact, setIncludeContact] = useState(showContact)
   const [template, setTemplate] = useState<ShareMessageKind>("intro")
 
   // Only offer toggles for data the property actually has.
@@ -301,19 +306,15 @@ export default function SharePanel({
 
   const canShare = body.trim().length > 0 && !typing
   const shareBody = isDesktop ? stripEmojis(body) : body
-  const waUrl = `https://wa.me/?text=${encodeURIComponent(shareBody + "\n" + url)}`
-  const waUrlNoContact = `https://wa.me/?text=${encodeURIComponent(shareBody + "\n" + urlNoContact)}`
+  const selectedUrl = language === "en" && englishUrl
+    ? includeContact ? englishUrl : englishUrlNoContact ?? englishUrl
+    : includeContact ? url : urlNoContact
+  const waUrl = `https://wa.me/?text=${encodeURIComponent(shareBody + "\n" + selectedUrl)}`
 
   async function handleCopy() {
-    await navigator.clipboard.writeText(url)
+    await navigator.clipboard.writeText(selectedUrl)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }
-
-  async function handleCopyNoContact() {
-    await navigator.clipboard.writeText(urlNoContact)
-    setCopiedNoContact(true)
-    setTimeout(() => setCopiedNoContact(false), 2000)
   }
 
   function handleWhatsApp() {
@@ -430,113 +431,43 @@ export default function SharePanel({
         </div>
       )}
 
-      {/* Link with your info */}
-      <div className="space-y-2.5">
+      {/* Public link */}
+      <div className="space-y-3">
         <div>
-          <p className={`text-xs font-bold uppercase tracking-widest mb-0.5 ${showContact ? "text-ink" : "text-mute"}`}>
-            Enlace con tus datos
-          </p>
-          <p className="text-xs text-mute leading-relaxed">
-            Muestra tu nombre y contacto al cliente.
-          </p>
+          <p className="text-xs font-bold text-ink uppercase tracking-widest mb-0.5">Link público</p>
+          <p className="text-xs text-mute leading-relaxed">Elige el idioma y si quieres mostrar tus datos de contacto.</p>
         </div>
 
-        {published && !showContact && (
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setLanguage("es")} className={`rounded-full px-3 py-2 text-xs font-bold transition-colors ${language === "es" ? "bg-ink text-white" : "bg-canvas-soft text-body"}`}>Español</button>
+          <button type="button" disabled={!englishUrl} onClick={() => setLanguage("en")} className={`rounded-full px-3 py-2 text-xs font-bold transition-colors disabled:opacity-40 ${language === "en" ? "bg-ink text-white" : "bg-canvas-soft text-body"}`}>English</button>
+        </div>
+
+        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+          <input type="checkbox" checked={includeContact} onChange={(e) => setIncludeContact(e.target.checked)} className="sr-only" />
+          <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center ${includeContact ? "bg-ink border-ink" : "bg-white border-hairline-strong"}`}>
+            {includeContact && <Check className="w-3.5 h-3.5 text-white" />}
+          </span>
+          <span className="text-sm font-semibold text-ink">Mostrar mis datos de contacto</span>
+        </label>
+
+        {published && includeContact && !showContact && (
           <div className="flex items-start gap-2 bg-canvas-softer border border-hairline rounded-xl px-3.5 py-2.5">
             <AlertCircle className="w-3.5 h-3.5 text-mute flex-shrink-0 mt-px" />
-            <p className="text-xs text-mute leading-relaxed">
-              Activa la tarjeta de contacto en esta propiedad para que tus datos aparezcan en este enlace.
-            </p>
+            <p className="text-xs text-mute leading-relaxed">Activa la tarjeta de contacto de esta propiedad para que tus datos aparezcan en el enlace.</p>
           </div>
         )}
 
-        <div className={`flex items-center gap-1.5 bg-canvas-softer border border-hairline rounded-xl px-4 py-2.5 ${!published || !showContact ? "opacity-40 pointer-events-none" : ""}`}>
-          <span className="flex-1 text-sm text-body font-mono truncate min-w-0">{url}</span>
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-canvas-soft hover:bg-surface-pressed text-ink transition-colors"
-            title="Ver"
-          >
+        <div className={`flex items-center gap-1.5 bg-canvas-softer border border-hairline rounded-xl px-4 py-2.5 ${!published || (includeContact && !showContact) ? "opacity-40 pointer-events-none" : ""}`}>
+          <span className="flex-1 text-sm text-body font-mono truncate min-w-0">{selectedUrl}</span>
+          <a href={selectedUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-canvas-soft hover:bg-surface-pressed text-ink transition-colors" title="Ver">
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
-          <div className="relative group flex-shrink-0">
-            <a
-              href={waUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={handleWhatsApp}
-              className={`w-7 h-7 flex items-center justify-center rounded-lg hover:opacity-80 transition-opacity ${!canShare ? "opacity-40 pointer-events-none" : ""}`}
-              title="Compartir por WhatsApp"
-            >
-              <WhatsAppIcon className="w-6 h-6" />
-            </a>
-            {!canShare && (
-              <div className="pointer-events-none absolute bottom-full right-0 mb-2 px-3 py-1.5 bg-ink text-white text-xs font-semibold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg z-10">
-                Escribe o genera un mensaje primero
-                <div className="absolute top-full right-2.5 border-[4px] border-transparent border-t-ink" />
-              </div>
-            )}
-          </div>
-          <button
-            onClick={handleCopy}
-            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-canvas-soft hover:bg-surface-pressed text-ink transition-colors"
-            title="Copiar enlace"
-          >
-            {copied ? <Check className="w-3.5 h-3.5 text-ink" /> : <Copy className="w-3.5 h-3.5" />}
-          </button>
-        </div>
-      </div>
-
-      <div className="border-t border-hairline" />
-
-      {/* Without my info */}
-      <div className="space-y-2.5">
-        <div>
-          <p className="text-xs font-bold text-ink uppercase tracking-widest mb-0.5">
-            Sin mis datos
-          </p>
-          <p className="text-xs text-mute leading-relaxed">
-            Sin tus datos de contacto. Ideal para portales y redes sociales.
-          </p>
-        </div>
-
-        <div className={`flex items-center gap-1.5 bg-canvas-softer border border-hairline rounded-xl px-4 py-2.5 ${!published ? "opacity-40 pointer-events-none" : ""}`}>
-          <span className="flex-1 text-sm text-body font-mono truncate min-w-0">{urlNoContact}</span>
-          <a
-            href={urlNoContact}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-canvas-soft hover:bg-surface-pressed text-ink transition-colors"
-            title="Ver"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
+          <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={handleWhatsApp} className={`flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg hover:opacity-80 transition-opacity ${!canShare ? "opacity-40 pointer-events-none" : ""}`} title="Compartir por WhatsApp">
+            <WhatsAppIcon className="w-6 h-6" />
           </a>
-          <div className="relative group flex-shrink-0">
-            <a
-              href={waUrlNoContact}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={handleWhatsApp}
-              className={`w-7 h-7 flex items-center justify-center rounded-lg hover:opacity-80 transition-opacity ${!canShare ? "opacity-40 pointer-events-none" : ""}`}
-              title="Compartir por WhatsApp"
-            >
-              <WhatsAppIcon className="w-6 h-6" />
-            </a>
-            {!canShare && (
-              <div className="pointer-events-none absolute bottom-full right-0 mb-2 px-3 py-1.5 bg-ink text-white text-xs font-semibold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg z-10">
-                Escribe o genera un mensaje primero
-                <div className="absolute top-full right-2.5 border-[4px] border-transparent border-t-ink" />
-              </div>
-            )}
-          </div>
-          <button
-            onClick={handleCopyNoContact}
-            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-canvas-soft hover:bg-surface-pressed text-ink transition-colors"
-            title="Copiar enlace"
-          >
-            {copiedNoContact ? <Check className="w-3.5 h-3.5 text-ink" /> : <Copy className="w-3.5 h-3.5" />}
+          <button onClick={handleCopy} className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-canvas-soft hover:bg-surface-pressed text-ink transition-colors" title="Copiar enlace">
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
           </button>
         </div>
       </div>
