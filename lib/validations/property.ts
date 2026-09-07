@@ -6,6 +6,9 @@ import { isYoutubeUrl } from "@/lib/youtube"
 const optionalString = (maxLength: number) =>
   z.string().max(maxLength).transform((v) => v.trim() || null)
 
+const optionalLocalizedString = (maxLength: number) =>
+  z.string().max(maxLength).transform((v) => v.trim() || null).optional()
+
 const optionalNonNegativeInt = z
   .string()
   .refine((v) => v === "" || /^\d+$/.test(v), {
@@ -29,6 +32,8 @@ export const PropertySchema = z.object({
     .trim()
     .min(3, "Escríbele un título a tu propiedad (mínimo 3 caracteres).")
     .max(120, "El título quedó muy largo, déjalo en máximo 120 caracteres."),
+  englishAvailable: z.boolean().optional().default(false),
+  titleEn: optionalLocalizedString(120),
   type: z.enum(PROPERTY_TYPE_IDS, {
     error: "Elige el tipo de propiedad.",
   }),
@@ -56,6 +61,7 @@ export const PropertySchema = z.object({
   bathrooms: optionalNonNegativeInt,
   parking: optionalNonNegativeInt,
   description: optionalString(1000),
+  descriptionEn: optionalLocalizedString(1000),
   // Absolute ceiling (Pro plan). The per-plan limit (10 free / 20 pro) is enforced by the actions.
   images: z.array(z.string()).max(PRO_PHOTO_LIMIT, `Puedes subir máximo ${PRO_PHOTO_LIMIT} fotos por propiedad.`),
   videoUrl: z
@@ -70,10 +76,38 @@ export const PropertySchema = z.object({
   longitude: z.number().min(-180).max(180).nullable().optional(),
   showContact: z.boolean().optional().default(false),
   gatedCommunity: z.boolean().optional().default(false),
+}).superRefine((data, ctx) => {
+  if (!data.englishAvailable) return
+
+  if (!data.description) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["description"],
+      message: "La descripción en español es obligatoria para publicar en inglés.",
+    })
+  }
+
+  if (!data.titleEn) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["titleEn"],
+      message: "Escribe el título en inglés.",
+    })
+  }
+
+  if (!data.descriptionEn) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["descriptionEn"],
+      message: "Escribe la descripción en inglés.",
+    })
+  }
 })
 
 // type/transactionType accept any string in the input — Zod validates the enums server-side
-export type PropertyInput = Omit<z.input<typeof PropertySchema>, "type" | "transactionType"> & {
+export type PropertyInput = Omit<z.input<typeof PropertySchema>, "type" | "transactionType" | "titleEn" | "descriptionEn"> & {
   type: string
   transactionType: string
+  titleEn?: string
+  descriptionEn?: string
 }

@@ -24,6 +24,7 @@ export default async function EditPropertyPage({
   const initial: InitialData = {
     id: property.id,
     title: property.title,
+    titleEn: property.titleEn ?? "",
     type: property.type,
     transactionType: property.transactionType ?? DEFAULT_TRANSACTION_TYPE,
     price: Math.round(Number(property.price)).toString(),
@@ -37,6 +38,8 @@ export default async function EditPropertyPage({
     parking: property.parking?.toString() ?? "",
     gatedCommunity: property.gatedCommunity,
     description: property.description ?? "",
+    descriptionEn: property.descriptionEn ?? "",
+    englishAvailable: property.englishAvailable,
     images: property.images,
     videoUrl: property.videoUrl ?? "",
     latitude: property.latitude ?? null,

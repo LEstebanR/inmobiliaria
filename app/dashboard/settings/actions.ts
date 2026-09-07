@@ -35,6 +35,7 @@ const profileSchema = z.object({
   previousImage: z.string().optional().or(z.literal("")),
   location: z.string().trim().max(80, "Máximo 80 caracteres.").optional().or(z.literal("")),
   bio: z.string().trim().max(300, "Máximo 300 caracteres.").optional().or(z.literal("")),
+  bioEn: z.string().trim().max(300, "Máximo 300 caracteres.").optional().or(z.literal("")),
   phone: z.string().trim().max(15, "Máximo 15 caracteres.").optional().or(z.literal("")),
   phoneIsWhatsapp: z.enum(["true", "false"]).optional(),
   instagram: handle,
@@ -65,6 +66,7 @@ export async function updateProfile(
     previousImage: formData.get("previousImage") ?? "",
     location: formData.get("location") ?? "",
     bio: formData.get("bio") ?? "",
+    bioEn: formData.get("bioEn") ?? "",
     phone: formData.get("phone") ?? "",
     phoneIsWhatsapp: formData.get("phoneIsWhatsapp") ?? "false",
     instagram: formData.get("instagram") ?? "",
@@ -79,7 +81,7 @@ export async function updateProfile(
     return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." }
   }
 
-  const { name, image, previousImage, location, bio, phone, phoneIsWhatsapp,
+  const { name, image, previousImage, location, bio, bioEn, phone, phoneIsWhatsapp,
     instagram, facebook, tiktok, linkedin, youtube, brandColor } = parsed.data
   const newImage = image || null
   // Defense in depth: the settings form already sanitizes as the agent
@@ -98,6 +100,7 @@ export async function updateProfile(
       image: newImage,
       location: location || null,
       bio: bio || null,
+      bioEn: bioEn || null,
       phone: sanitizedPhone || null,
       phoneIsWhatsapp: phoneIsWhatsapp === "true",
       instagram: stripAt(instagram),
@@ -110,6 +113,7 @@ export async function updateProfile(
   })
 
   revalidatePath("/dashboard", "layout")
+  revalidatePath("/dashboard/settings")
   return { success: true }
 }
 

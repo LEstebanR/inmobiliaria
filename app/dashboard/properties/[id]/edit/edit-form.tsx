@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -25,6 +25,7 @@ import LocationSelect from "@/components/location-select"
 import { photoLimit } from "@/lib/plans"
 import { PROPERTY_TYPES, TRANSACTION_TYPES } from "@/lib/property-types"
 import { updateProperty } from "./actions"
+import { getEnglishProfileStatus } from "../../new/actions"
 import { FieldError, validatePropertyInput } from "../../property-form"
 
 const MapPicker = dynamic(() => import("@/components/map-picker"), { ssr: false })
@@ -67,6 +68,7 @@ function FieldLabel({ children, optional }: { children: React.ReactNode; optiona
 export type InitialData = {
   id: string
   title: string
+  titleEn: string
   type: string
   transactionType: string
   price: string
@@ -80,6 +82,8 @@ export type InitialData = {
   parking: string
   gatedCommunity: boolean
   description: string
+  descriptionEn: string
+  englishAvailable: boolean
   images: string[]
   videoUrl: string
   latitude: number | null
@@ -91,6 +95,7 @@ export default function EditForm({ initial, isPremium }: { initial: InitialData;
   const [type, setType] = useState(initial.type)
   const [transactionType, setTransactionType] = useState(initial.transactionType)
   const [title, setTitle] = useState(initial.title)
+  const [titleEn, setTitleEn] = useState(initial.titleEn)
   const [price, setPrice] = useState(initial.price)
   const [state, setState] = useState(initial.state)
   const [city, setCity] = useState(initial.city)
@@ -102,6 +107,9 @@ export default function EditForm({ initial, isPremium }: { initial: InitialData;
   const [bathrooms, setBathrooms] = useState(initial.bathrooms)
   const [parking, setParking] = useState(initial.parking)
   const [description, setDescription] = useState(initial.description)
+  const [descriptionEn, setDescriptionEn] = useState(initial.descriptionEn)
+  const [englishAvailable, setEnglishAvailable] = useState(initial.englishAvailable)
+  const [englishProfileComplete, setEnglishProfileComplete] = useState(true)
   const [videoUrl, setVideoUrl] = useState(initial.videoUrl)
   const [latitude, setLatitude] = useState<number | null>(initial.latitude)
   const [longitude, setLongitude] = useState<number | null>(initial.longitude)
@@ -112,6 +120,10 @@ export default function EditForm({ initial, isPremium }: { initial: InitialData;
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+
+  useEffect(() => {
+    getEnglishProfileStatus().then(setEnglishProfileComplete).catch(() => setEnglishProfileComplete(false))
+  }, [])
 
   function clearError(field: string) {
     setFieldErrors((prev) => {
@@ -127,8 +139,8 @@ export default function EditForm({ initial, isPremium }: { initial: InitialData;
     setError("")
 
     const data = {
-      title, type, transactionType, price, state, city, neighborhood,
-      area, landArea, bedrooms, bathrooms, parking, gatedCommunity, description,
+      title, titleEn, englishAvailable, type, transactionType, price, state, city, neighborhood,
+      area, landArea, bedrooms, bathrooms, parking, gatedCommunity, description, descriptionEn,
       images: imageUrls,
       videoUrl,
       latitude,
@@ -201,6 +213,43 @@ export default function EditForm({ initial, isPremium }: { initial: InitialData;
             })}
           </div>
           <FieldError message={fieldErrors.type} />
+        </SectionCard>
+
+        <SectionCard id="tour-language" title="Disponibilidad en inglés">
+          <label className="flex items-start gap-3 cursor-pointer group select-none">
+            <div className="relative flex-shrink-0 mt-0.5">
+              <input type="checkbox" className="sr-only" checked={englishAvailable} onChange={(e) => setEnglishAvailable(e.target.checked)} />
+              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${englishAvailable ? "bg-ink border-ink" : "bg-white border-hairline-strong group-hover:border-ink"}`}>
+                {englishAvailable && <span className="text-white text-xs font-black">✓</span>}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-ink">También disponible en inglés</p>
+              <p className="text-xs text-mute leading-relaxed mt-0.5">Crearemos un segundo link con toda la ficha traducida. Necesitas título y descripción en ambos idiomas.</p>
+            </div>
+          </label>
+          {englishAvailable && (
+            <div className="space-y-4 pt-4 border-t border-hairline">
+              {!englishProfileComplete && (
+                <div className="bg-warning-50 border border-warning-200 rounded-xl px-3 py-2.5">
+                  <p className="text-xs font-bold text-warning-900">Completa tu perfil en inglés</p>
+                  <p className="text-xs text-warning-700 mt-0.5">Agrega tu descripción breve en inglés en <Link href="/dashboard/settings" className="font-bold underline">Configuración</Link> para que la card del asesor aparezca traducida.</p>
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <FieldLabel>Título en inglés</FieldLabel>
+                <Input placeholder="E.g. Modern apartment with park view" value={titleEn} onChange={(e) => { setTitleEn(e.target.value); clearError("titleEn") }} className="h-11" maxLength={120} />
+                <p className="text-xs text-mute text-right">{titleEn.length}/120</p>
+                <FieldError message={fieldErrors.titleEn} />
+              </div>
+              <div className="space-y-1.5">
+                <FieldLabel>Descripción en inglés</FieldLabel>
+                <textarea placeholder="Describe the property, finishes, location and nearby points of interest..." value={descriptionEn} onChange={(e) => { setDescriptionEn(e.target.value); clearError("descriptionEn") }} rows={5} maxLength={1000} className="w-full rounded-xl border border-hairline-strong px-4 py-3 text-sm text-ink placeholder:text-mute resize-none focus:outline-none focus:ring-2 focus:ring-ink/30 focus:border-ink transition-colors" />
+                <p className="text-xs text-mute text-right">{descriptionEn.length}/1000</p>
+                <FieldError message={fieldErrors.descriptionEn} />
+              </div>
+            </div>
+          )}
         </SectionCard>
 
         <SectionCard id="tour-transaction" title="Tipo de operación">

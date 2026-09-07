@@ -18,6 +18,15 @@ import ContactButtons from "./contact-buttons"
 import SocialLinkButton from "./social-link-button"
 import WhatsAppFab from "./whatsapp-fab"
 
+const TYPE_LABELS_EN: Record<string, string> = {
+  apartment: "Apartment", house: "House", office: "Office", commercial: "Commercial property",
+  lot: "Lot", warehouse: "Warehouse", house_lot: "House with lot", farm: "Farm", aparta_suite: "Aparta suite",
+}
+
+const TRANSACTION_LABELS_EN: Record<string, string> = {
+  sale: "For sale", rent: "For rent", rent_furnished: "Furnished rental", exchange: "Exchange",
+}
+
 // ── Social icon SVGs (same as agent page) ─────────────────────────────────
 
 function InstagramIcon({ className }: { className?: string }) {
@@ -69,7 +78,7 @@ const getProperty = cache(async (slug: string) => {
     include: {
       user: {
         select: {
-          name: true, email: true, image: true, location: true, bio: true,
+          name: true, email: true, image: true, location: true, bio: true, bioEn: true,
           phone: true, phoneIsWhatsapp: true,
           instagram: true, facebook: true, tiktok: true, linkedin: true, youtube: true,
         },
@@ -85,10 +94,10 @@ export async function generateMetadata({
   searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ c?: string }>
+  searchParams: Promise<{ c?: string; lang?: string }>
 }): Promise<Metadata> {
   const { slug } = await params
-  const { c } = await searchParams
+  const { c, lang } = await searchParams
   // A throw here never reaches error.tsx — Next falls back to the not-found
   // metadata, so a DB blip would title the page "Propiedad no encontrada" and
   // tell the visitor (and Google) that a live listing is gone. Degrade to the
@@ -97,19 +106,21 @@ export async function generateMetadata({
   if (property === undefined) return {}
   if (!property) return { title: "Propiedad no encontrada" }
 
-  const type = TYPE_LABELS[property.type] ?? property.type
+  const english = lang === "en" && property.englishAvailable
+  const type = (english ? TYPE_LABELS_EN : TYPE_LABELS)[property.type] ?? property.type
+
   const location = [property.neighborhood, property.city, property.state].filter(Boolean).join(", ")
 
   const features = [
     property.bedrooms != null
-      ? `${property.bedrooms} ${property.bedrooms === 1 ? "habitación" : "habitaciones"}`
+      ? `${property.bedrooms} ${english ? property.bedrooms === 1 ? "bedroom" : "bedrooms" : property.bedrooms === 1 ? "habitación" : "habitaciones"}`
       : null,
     property.bathrooms != null
-      ? `${property.bathrooms} ${property.bathrooms === 1 ? "baño" : "baños"}`
+      ? `${property.bathrooms} ${english ? property.bathrooms === 1 ? "bathroom" : "bathrooms" : property.bathrooms === 1 ? "baño" : "baños"}`
       : null,
     property.area != null ? `${property.area} m²` : null,
     property.parking != null
-      ? `${property.parking} ${property.parking === 1 ? "parqueadero" : "parqueaderos"}`
+      ? `${property.parking} ${english ? property.parking === 1 ? "parking space" : "parking spaces" : property.parking === 1 ? "parqueadero" : "parqueaderos"}`
       : null,
   ]
     .filter(Boolean)
@@ -117,28 +128,28 @@ export async function generateMetadata({
 
   const price = formatCOP(Number(property.price))
   const descParts = [
-    `${type}${location ? ` en ${location}` : ""}`,
+    `${type}${location ? english ? ` in ${location}` : ` en ${location}` : ""}`,
     price,
     features || null,
-    "Contacta al asesor directamente por WhatsApp.",
+    english ? "Contact the agent directly by WhatsApp." : "Contacta al asesor directamente por WhatsApp.",
   ].filter(Boolean)
   const description = descParts.join(". ")
 
-  const ogTitle = `${type}${location ? ` en ${location}` : ""} — ${price}`
+  const ogTitle = `${type}${location ? english ? ` in ${location}` : ` en ${location}` : ""} — ${price}`
   const ogImage = {
-    url: `/p/${slug}/og.jpg`,
+    url: `/p/${slug}/og.jpg${english ? "?lang=en" : ""}`,
     width: 1200,
     height: 630,
     alt: "Propiedad en Conexory",
   }
 
   const meta: Metadata = {
-    title: `${type}${location ? ` en ${location}` : ""} — ${price}`,
+    title: `${type}${location ? english ? ` in ${location}` : ` en ${location}` : ""} — ${price}`,
     description,
-    alternates: { canonical: `/p/${slug}` },
+    alternates: { canonical: `/p/${slug}${english ? "?lang=en" : ""}` },
     openGraph: {
       type: "website",
-      url: `/p/${slug}`,
+      url: `/p/${slug}${english ? "?lang=en" : ""}`,
       title: ogTitle,
       description,
       siteName: "Conexory",
@@ -148,7 +159,7 @@ export async function generateMetadata({
       card: "summary_large_image",
       title: ogTitle,
       description,
-      images: [`/p/${slug}/og.jpg`],
+      images: [`/p/${slug}/og.jpg${english ? "?lang=en" : ""}`],
     },
   }
 
@@ -161,7 +172,7 @@ export async function generateMetadata({
 
 // ── Footer ─────────────────────────────────────────────────────────────────
 
-function PageFooter() {
+function PageFooter({ english }: { english: boolean }) {
   return (
     <footer className="border-t border-hairline mt-2">
       <Link
@@ -178,7 +189,7 @@ function PageFooter() {
           />
         </div>
         <div className="leading-tight">
-          <p className="text-[11px] text-mute font-medium">Publicado con</p>
+          <p className="text-[11px] text-mute font-medium">{english ? "Published with" : "Publicado con"}</p>
           <p className="inline-flex items-center gap-0.5 text-sm font-black text-ink tracking-tight">
             Conexory
             <ArrowUpRight className="w-3.5 h-3.5 text-mute transition-all group-hover:text-ink group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
@@ -204,9 +215,10 @@ type AgentUser = {
   tiktok: string | null
   linkedin: string | null
   youtube: string | null
+  bioEn: string | null
 }
 
-function AgentCard({ propertyId, user, whatsappMessage }: { propertyId: string; user: AgentUser; whatsappMessage: string }) {
+function AgentCard({ propertyId, user, whatsappMessage, english }: { propertyId: string; user: AgentUser; whatsappMessage: string; english: boolean }) {
   const initials = user.name
     .split(" ")
     .map((n: string) => n[0])
@@ -247,7 +259,7 @@ function AgentCard({ propertyId, user, whatsappMessage }: { propertyId: string; 
       {/* Name + role + location */}
       <div className="text-center mb-4">
         <p className="text-base font-black text-ink tracking-tight leading-tight">{user.name}</p>
-        <p className="text-xs text-mute font-medium mt-0.5">Asesor inmobiliario</p>
+        <p className="text-xs text-mute font-medium mt-0.5">{english ? "Real estate agent" : "Asesor inmobiliario"}</p>
         {user.location && (
           <div className="flex items-center justify-center gap-1 mt-2">
             <MapPin className="w-3 h-3 text-mute flex-shrink-0" strokeWidth={2} />
@@ -257,8 +269,8 @@ function AgentCard({ propertyId, user, whatsappMessage }: { propertyId: string; 
       </div>
 
       {/* Bio */}
-      {user.bio && (
-        <p className="text-xs text-body leading-relaxed text-center mb-4">{user.bio}</p>
+      {(english ? user.bioEn ?? user.bio : user.bio) && (
+        <p className="text-xs text-body leading-relaxed text-center mb-4">{english ? user.bioEn ?? user.bio : user.bio}</p>
       )}
 
       {/* Social icons */}
@@ -294,22 +306,26 @@ export default async function PublicPropertyPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ c?: string }>
+  searchParams: Promise<{ c?: string; lang?: string }>
 }) {
   const { slug } = await params
-  const { c } = await searchParams
+  const { c, lang } = await searchParams
   const hideContact = c === "0"
 
   const property = await getProperty(slug)
 
   if (!property) notFound()
 
+  const english = lang === "en" && property.englishAvailable
+  const title = english ? property.titleEn ?? property.title : property.title
+  const description = english ? property.descriptionEn ?? property.description : property.description
+
   // Track visit fire-and-forget after response is sent
   if (property.published) {
     after(() => prisma.propertyVisit.create({ data: { propertyId: property.id } }))
   }
 
-  const typeLabel = TYPE_LABELS[property.type] ?? property.type
+  const typeLabel = (english ? TYPE_LABELS_EN : TYPE_LABELS)[property.type] ?? property.type
 
   if (!property.published) {
     return (
@@ -319,14 +335,15 @@ export default async function PublicPropertyPage({
             <EyeOff className="w-9 h-9 text-mute" strokeWidth={1.5} />
           </div>
           <h1 className="text-xl font-black text-ink tracking-tight mb-2">
-            Propiedad no disponible
+            {english ? "Property unavailable" : "Propiedad no disponible"}
           </h1>
           <p className="text-body text-sm leading-relaxed max-w-xs">
-            Esta propiedad fue desactivada temporalmente por el agente. Es
-            posible que ya no esté disponible.
+            {english
+              ? "This property was temporarily deactivated by the agent and may no longer be available."
+              : "Esta propiedad fue desactivada temporalmente por el agente. Es posible que ya no esté disponible."}
           </p>
         </main>
-        <PageFooter />
+        <PageFooter english={english} />
       </div>
     )
   }
@@ -339,18 +356,20 @@ export default async function PublicPropertyPage({
   const videoId = youtubeId(property.videoUrl)
   const location = [property.neighborhood, property.city, property.state].filter(Boolean).join(", ")
   const transactionLabel = property.transactionType
-    ? TRANSACTION_TYPE_LABELS[property.transactionType] ?? null
+    ? (english ? TRANSACTION_LABELS_EN : TRANSACTION_TYPE_LABELS)[property.transactionType] ?? null
     : null
 
   const propertyUrl = `${getAppUrl()}/p/${property.slug}`
-  const whatsappMessage = `Hola, estoy interesado en esta propiedad: ${property.title}\n${propertyUrl}`
+  const whatsappMessage = english
+    ? `Hello, I am interested in this property: ${title}\n${propertyUrl}?lang=en`
+    : `Hola, estoy interesado en esta propiedad: ${title}\n${propertyUrl}`
 
   const jsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "RealEstateListing",
-    name: property.title,
-    description: property.description ?? undefined,
-    url: propertyUrl,
+    name: title,
+    description: description ?? undefined,
+    url: `${propertyUrl}${english ? "?lang=en" : ""}`,
     datePosted: property.createdAt.toISOString(),
     ...(property.images.length > 0 && { image: property.images }),
     offers: {
@@ -377,21 +396,21 @@ export default async function PublicPropertyPage({
 
   const stats = [
     property.area != null && { icon: Ruler, value: property.area, label: "m²" },
-    property.landArea != null && { icon: LandPlot, value: property.landArea, label: "m² lote" },
+    property.landArea != null && { icon: LandPlot, value: property.landArea, label: english ? "lot m²" : "m² lote" },
     property.bedrooms != null && {
       icon: BedDouble,
       value: property.bedrooms,
-      label: property.bedrooms === 1 ? "Habitación" : "Habitaciones",
+      label: english ? property.bedrooms === 1 ? "Bedroom" : "Bedrooms" : property.bedrooms === 1 ? "Habitación" : "Habitaciones",
     },
     property.bathrooms != null && {
       icon: Bath,
       value: property.bathrooms,
-      label: property.bathrooms === 1 ? "Baño" : "Baños",
+      label: english ? property.bathrooms === 1 ? "Bathroom" : "Bathrooms" : property.bathrooms === 1 ? "Baño" : "Baños",
     },
     property.parking != null && {
       icon: Car,
       value: property.parking,
-      label: property.parking === 1 ? "Parqueadero" : "Parqueaderos",
+      label: english ? property.parking === 1 ? "Parking space" : "Parking spaces" : property.parking === 1 ? "Parqueadero" : "Parqueaderos",
     },
   ].filter(Boolean) as { icon: typeof Ruler; value: number; label: string }[]
 
@@ -409,7 +428,8 @@ export default async function PublicPropertyPage({
         <div className="w-full sm:max-w-2xl sm:mx-auto sm:px-4 sm:pt-5">
           <PublicGallery
             images={property.images}
-            title={property.title}
+            title={title}
+            english={english}
             className="sm:rounded-2xl"
           />
         </div>
@@ -424,7 +444,7 @@ export default async function PublicPropertyPage({
                 {typeLabel}{transactionLabel ? ` · ${transactionLabel}` : ""}
               </p>
               <h1 className="text-2xl sm:text-3xl font-black text-ink tracking-tight leading-tight">
-                {property.title}
+                {title}
               </h1>
               {location && (
                 <div className="flex items-center gap-1.5 text-body text-sm mt-2">
@@ -435,14 +455,14 @@ export default async function PublicPropertyPage({
               {property.gatedCommunity && (
                 <div className="inline-flex items-center gap-1.5 mt-3 bg-canvas-soft text-ink text-xs font-semibold px-2.5 py-1 rounded-full">
                   <ShieldCheck className="w-3.5 h-3.5" strokeWidth={2} />
-                  Unidad cerrada
+                  {english ? "Gated community" : "Unidad cerrada"}
                 </div>
               )}
             </div>
             <div className="space-y-1.5">
               {priceReduced && (
                 <span className="inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full bg-ink text-white">
-                  Precio reducido
+                  {english ? "Price reduced" : "Precio reducido"}
                 </span>
               )}
               <p className="text-4xl sm:text-5xl font-black text-ink tracking-tighter">
@@ -474,14 +494,14 @@ export default async function PublicPropertyPage({
         )}
 
         {/* Description */}
-        {property.description && (
+        {description && (
           <Reveal delay={140}>
             <div>
               <h2 className="text-xs font-bold text-mute uppercase tracking-widest mb-3">
-                Descripción
+                {english ? "Description" : "Descripción"}
               </h2>
               <p className="text-[15px] text-body leading-relaxed whitespace-pre-wrap">
-                {property.description}
+                {description}
               </p>
             </div>
           </Reveal>
@@ -490,7 +510,7 @@ export default async function PublicPropertyPage({
         {/* Video — separate from the photo gallery, between description and map */}
         {videoId && (
           <Reveal delay={150}>
-            <PropertyVideo videoId={videoId} title={property.title} />
+            <PropertyVideo videoId={videoId} title={title} />
           </Reveal>
         )}
 
@@ -509,7 +529,7 @@ export default async function PublicPropertyPage({
         {showContactCard && (
           <div className="xl:hidden">
             <Reveal delay={200}>
-              <AgentCard propertyId={property.id} user={property.user} whatsappMessage={whatsappMessage} />
+              <AgentCard propertyId={property.id} user={property.user} whatsappMessage={whatsappMessage} english={english} />
             </Reveal>
           </div>
         )}
@@ -518,7 +538,7 @@ export default async function PublicPropertyPage({
       {/* Fixed floating card — xl+ only, positioned in the right margin */}
       {showContactCard && (
         <div className="hidden xl:block fixed right-10 top-5 w-64 z-10">
-          <AgentCard propertyId={property.id} user={property.user} whatsappMessage={whatsappMessage} />
+          <AgentCard propertyId={property.id} user={property.user} whatsappMessage={whatsappMessage} english={english} />
         </div>
       )}
 
@@ -528,10 +548,11 @@ export default async function PublicPropertyPage({
           phone={property.user.phone}
           phoneIsWhatsapp={property.user.phoneIsWhatsapp}
           whatsappMessage={whatsappMessage}
+          english={english}
         />
       )}
 
-      <PageFooter />
+      <PageFooter english={english} />
     </div>
   )
 }

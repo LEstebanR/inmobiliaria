@@ -26,6 +26,7 @@ model User {
   profilePublished Boolean   @default(false)
   location         String?
   bio             String?
+  bioEn           String?
   phone           String?
   phoneIsWhatsapp Boolean   @default(false)
   instagram       String?
@@ -91,6 +92,7 @@ model Property {
   id           String   @id @default(cuid())
   userId       String
   title        String
+  titleEn      String?
   slug         String   @unique
   type         String
   transactionType String?  // sale | rent | rent_furnished | exchange
@@ -106,6 +108,8 @@ model Property {
   parking      Int?
   gatedCommunity Boolean @default(false)
   description  String?
+  descriptionEn String?
+  englishAvailable Boolean @default(false)
   images       String[]
   videoUrl     String?
   latitude     Float?

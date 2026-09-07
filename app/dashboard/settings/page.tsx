@@ -40,6 +40,7 @@ export default async function SettingsPage() {
       role: true,
       location: true,
       bio: true,
+      bioEn: true,
       phone: true,
       phoneIsWhatsapp: true,
       instagram: true,
@@ -53,6 +54,10 @@ export default async function SettingsPage() {
     },
   })
   if (!user) redirect("/login")
+
+  const englishPropertyCount = await prisma.property.count({
+    where: { userId: session.user.id, englishAvailable: true },
+  })
 
   const appUrl = getAppUrl()
   const profileUrl = user.agentSlug ? `${appUrl}/agente/${user.agentSlug}` : null
@@ -89,6 +94,7 @@ export default async function SettingsPage() {
             image={user.image ?? null}
             location={user.location ?? ""}
             bio={user.bio ?? ""}
+            bioEn={user.bioEn ?? ""}
             phone={user.phone ?? ""}
             phoneIsWhatsapp={user.phoneIsWhatsapp}
             instagram={user.instagram ?? ""}
@@ -97,6 +103,8 @@ export default async function SettingsPage() {
             linkedin={user.linkedin ?? ""}
             youtube={user.youtube ?? ""}
             brandColor={user.brandColor}
+            showEnglishProfile={englishPropertyCount > 0}
+            englishProfileComplete={!!user.bioEn}
           />
         </div>
 

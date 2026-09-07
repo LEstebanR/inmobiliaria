@@ -82,4 +82,34 @@ describe("PropertySchema", () => {
       expect(result.data.area).toBeNull()
     }
   })
+
+  test("requires Spanish and English title and description when English is enabled", () => {
+    const result = PropertySchema.safeParse({ ...validInput, englishAvailable: true, description: "" })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues.map((issue) => issue.path[0])).toEqual(
+        expect.arrayContaining(["description", "titleEn", "descriptionEn"]),
+      )
+    }
+  })
+
+  test("accepts bilingual content when English is enabled", () => {
+    const result = PropertySchema.safeParse({
+      ...validInput,
+      englishAvailable: true,
+      titleEn: "Modern apartment in Laureles",
+      descriptionEn: "Bright apartment close to parks and restaurants.",
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test("does not require English content for Spanish-only properties", () => {
+    const result = PropertySchema.safeParse({
+      ...validInput,
+      englishAvailable: false,
+      titleEn: "",
+      descriptionEn: "",
+    })
+    expect(result.success).toBe(true)
+  })
 })
